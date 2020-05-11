@@ -1,79 +1,65 @@
-# frozen_string_literal: true
-
-require 'pry'
+require "byebug"
 
 class VendingMachine
-  attr_accessor :tickets, :route
+
+  attr_reader :path, :stationed_at, :tickets
+  attr_accessor :route
 
   def initialize(path, location)
-    @path = path
-    @route = load_json_file(path)
-    @stationed_at = location
+    @path=path
+    @stationed_at=location
     @tickets = []
+    @route = load_json_file(path)
   end
 
-  def find_index(station)
-    @route.find_index do |r|
-      r["station name"] == station
-    end
+  def load_json_file(path)
+    file = File.open(path)
+    data = JSON.load file
+    data
   end
 
+  def purchase_tickets(destination, number_of_tickets, name)
+    index_stationed_at = route.index { |r| r["station name"] == stationed_at }
+    index_destination = route.index { |r| r["station name"] == destination }
 
+    if route[index_stationed_at...index_destination].any? { |r| r["remaining seats"] < number_of_tickets } || route[index_destination...index_stationed_at].any? { |r| r["remaining seats"] < number_of_tickets }
 
-  def purchase_tickets(destination, tickets_needed, name)
+    "Tickets can't be purchased because there are not enough seats. We aplogize for the inconvenience." 
 
-    starting_place = self.stationed_at
-    starting_index = find_index(starting_place)
-    ending_index = find_index(destination)
-    @tickets_needed = tickets_needed
-
-    if ending_index > starting_index
-
-      chosen_route_south = @route[starting_index...ending_index]
-      @answer = chosen_route_south.none? { |r| r["remaining seats"] < tickets_needed }
-
-      if @answer == true
-        adjust_tickets
-        get_tickets(starting_place, destination, name, tickets_needed)
-        "Transaction completed, thank you for choosing Amtrak."
-      else
-        "Tickets can't be purchased because there are not enough seats. We aplogize for the inconvenience."
+    elsif route[index_stationed_at...index_destination].any? { |r| r["remaining seats"] >= number_of_tickets }
+      
+      adjust_num_of_remaining_seats(index_stationed_at, index_destination, number_of_tickets)
+      
+      while number_of_tickets > 0
+        ticket = Ticket.new(stationed_at, destination, name)
+        @tickets << ticket 
+        number_of_tickets -= 1
       end
 
-    else ending_index < starting_index
-      chosen_route_north = @route[ending_index...starting_index]
+      "Transaction completed, thank you for choosing Amtrak."
+    
+    else route[index_destination...index_stationed_at].any? {|r| r["remaining seats"] >= number_of_tickets }
 
-      @answer = chosen_route_north.none? { |r| r["remaining seats"] < tickets_needed }
+      adjust_num_of_remaining_seats(index_stationed_at, index_destination, number_of_tickets)
 
-      if @answer == true
-        adjust_tickets
-        get_tickets(starting_place, destination, name, tickets_needed)
+      while number_of_tickets > 0
+        ticket = Ticket.new(stationed_at, destination, name)
+        @tickets << ticket 
+        number_of_tickets -= 1
+      end
+
         "Transaction completed, thank you for choosing Amtrak."
+
+    end
+  end
+
+  def adjust_num_of_remaining_seats(index_stationed_at, index_destination, number_of_tickets)
+    self.route.each_with_index do |station, i|
+      if index_stationed_at <= i && i <= index_destination
+        station["remaining seats"] -= number_of_tickets
       else
-        "Tickets can't be purchased because there are not enough seats. We aplogize for the inconvenience."
+        station["remaining seats"] -= number_of_tickets
       end
     end
-  end
-
-  def get_tickets(starting_place, destination, name, tickets_needed)
-    tickets_needed.times do
-      self.tickets << Ticket.new(starting_place, destination, name)
-    end
-  end
-
-  def adjust_tickets
-    self.route.each_with_index do |r, i|
-      r["remaining seats"] -= @tickets_needed
-    end
-  end
-
-  def load_json_file(file_path)
-    file = File.read(file_path)
-    data_hash = JSON.parse(file)
-    data_hash
-  end
-
-  def stationed_at
-    @stationed_at
   end
 end
